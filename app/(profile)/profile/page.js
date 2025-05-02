@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../../../components/confirm-dialog"
 import { clearUserFieldByEmail, fetchTeamUsers, removeParticipant } from "../../../lib/actions/teams.action"
 import { logOut } from "../../../lib/actions/auth.action"
 import { redirect } from "next/navigation"
+import { GithubAuthProvider, signInWithPopup } from "firebase/auth"
 
 
 
@@ -29,26 +30,68 @@ export default function ProfilePage() {
     await logOut();
     redirect("/");
   }
+
+  async function fetchUser() {
+    const res = await fetch("/api/loggedUser");
+    const data = await res.json();
+    console.log(data.user)
+    if (data.success) {
+      setCurrentUser(data.user);
+        if(!data.user.githubUsername) setIntegrations(prev => ({ ...prev, github: false }));
+        if(!data.user.slackUsername) setIntegrations(prev => ({ ...prev, slack: false }));
+      if(data.user.teamId){
+        setCurrentTeam(data.user.teamId);
+        const team = await fetchTeamUsers(data.user.teamId);
+        console.log("teamMembers:",team);
+        setTeamMembers(team.users);
+      }
+      
+      
+    }
+  }
+
+  async function signInWithGithub() {
+      const provider = new GithubAuthProvider();
+    
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+        const githubUsername= result._tokenResponse.screenName;
+    
+        // Send to server
+        await fetch("/api/sessionLogin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken, githubUsername }),
+        });
+    
+        console.log("Signed in with GitHub:", githubUsername);
+        fetchUser();
+      } catch (error) {
+        console.error("GitHub Sign In Error:", error.message);
+      }
+    }
+    
+    
+    async function signInWithSlack(){
+      const clientId = process.env.NEXT_PUBLIC_SLACK_CLIENT_ID;
+      const redirectUri = process.env.NEXT_PUBLIC_SLACK_REDIRECT_URI;
+    
+      const scopes = encodeURIComponent('users:read,users:read.email');
+    
+      if (!clientId || !redirectUri) {
+        console.error("Slack OAuth environment variables are not set.");
+        return;
+      }
+    
+      const slackAuthUrl = `https://slack.com/oauth/v2/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}`;
+    
+      redirect(slackAuthUrl);
+    };
     
     useEffect(() => {
-        async function fetchUser() {
-            const res = await fetch("/api/loggedUser");
-            const data = await res.json();
-            console.log(data.user)
-            if (data.success) {
-              setCurrentUser(data.user);
-                if(!data.user.githubUsername) setIntegrations(prev => ({ ...prev, github: false }));
-                if(!data.user.slackUsername) setIntegrations(prev => ({ ...prev, slack: false }));
-              if(data.user.teamId){
-                setCurrentTeam(data.user.teamId);
-                const team = await fetchTeamUsers(data.user.teamId);
-                console.log("teamMembers:",team);
-                setTeamMembers(team.users);
-              }
-              
-              
-            }
-          }
+        
       
           fetchUser();
     }, []);
@@ -147,7 +190,7 @@ export default function ProfilePage() {
                         Disconnect
                       </button>
                     ) : (
-                      <button className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">
+                      <button onClick={signInWithSlack} className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">
                         Connect
                       </button>
                     )}
@@ -181,7 +224,7 @@ export default function ProfilePage() {
                         Disconnect
                       </button>
                     ) : (
-                      <button className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">
+                      <button onClick={signInWithGithub} className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300">
                         Connect
                       </button>
                     )}
