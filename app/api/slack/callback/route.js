@@ -58,5 +58,5 @@ export async function GET(req) {
       }, { merge: true });
 
   // Redirect or return user data
-  return NextResponse.redirect("pulsecheck-theta.vercel.app");
+  return NextResponse.redirect("https://pulsecheck-theta.vercel.app");
 }
